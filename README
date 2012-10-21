@@ -5,7 +5,9 @@ This is some software to aid performance scalability analysis.  It includes:
 	gnuplot-linear		Linear scalability model
 	gnuplot-amdahl		Amdahl's law scalability
 	gnuplot-usl		Universal Scalabitily Law
-	data.txt		sample input file
+	r-scale.r		Scalability Models (Amdahl, USL)
+	r-util-md1.r		Queueing Theory M/D/1 mean response time vs util
+	data.txt		Sample input file for scalability modeling
 
 There are more projects rather than stand-alone tools; expect to customize them
 for each system you are modeling, and these assume you already understand
