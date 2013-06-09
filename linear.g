@@ -1,13 +1,13 @@
 #!/usr/bin/env gnuplot
 #
-# gnuplot-linear	Linear scalability model using gnuplot.
+# linear.g	Linear scalability model using gnuplot.
 #
 # This applies a linear scalability model to an input data set.  It uses
 # regression analysis to determine the constants.  Two linear functions
 # are plotted: Linear(N), which fits the input set; and LinearN1(N), which
 # uses N=1 only.
 #
-# USAGE: ./gnuplot-linear
+# USAGE: ./linear.g
 #
 # See the "tunables" section for defining the input data file, and the number
 # of rows to include as model input.  The remainder of rows are drawn as

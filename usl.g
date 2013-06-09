@@ -1,11 +1,11 @@
 #!/usr/bin/env gnuplot
 #
-# gnuplot-usl		USL using gnuplot.
+# usl.g		USL using gnuplot.
 #
 # This applies Universal Scalability Law (Dr. Neil J. Gunther) to the input
 # data set.  It uses regression analysis to determine the constants.
 #
-# USAGE: ./gnuplot-usl
+# USAGE: ./usl.g
 #
 # See the "tunables" section for defining the input data file, and the number
 # of rows to include as model input (USL insists on a minimum of six).  The

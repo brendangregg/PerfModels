@@ -1,11 +1,11 @@
 #!/usr/bin/env gnuplot
 #
-# gnuplot-amdahl	Amdahl's law scalability using gnuplot.
+# amdahl.g	Amdahl's law scalability using gnuplot.
 #
 # This applies Amdahl's law to model scalability (maximum speedup) to the input
 # data set.  It uses regression analysis to determine the constants.
 #
-# USAGE: ./gnuplot-amdahl
+# USAGE: ./amdahl.g
 #
 # See the "tunables" section for defining the input data file, and the number
 # of rows to include as model input.  The remainder of rows are drawn as

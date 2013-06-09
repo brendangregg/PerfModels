@@ -1,10 +1,10 @@
-# r-scale.r	Amdahl's law and USL scalability using R statistics.
+# scale.r	Amdahl's law and USL scalability using R statistics.
 #
 # This applies both Amdahl's law to model scalability (maximum speedup) and
 # Universal Scalability Law to the input data set.  It uses regression
 # analysis to determine the constants.
 #
-# USAGE: R --save < r-scale.r		# generates r-scale.pdf
+# USAGE: R --save < scale.r		# generates scale.pdf
 #
 # See the "Tunables" section for defining the input data file, and the number
 # of rows to include as model input.  The remainder of rows are drawn as
@@ -49,7 +49,7 @@
 filename <- "data.txt"		# data file (see top comment for format)
 inputN <- 10			# rows to include as model input
 padding <- 1.1			# chart padding
-pdf("r-scale.pdf", w=10, h=6)	# comment for interactive
+pdf("scale.pdf", w=10, h=6)	# comment for interactive
 
 # Input
 input_full <- read.table(filename, header=TRUE)

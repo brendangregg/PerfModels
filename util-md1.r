@@ -1,6 +1,6 @@
-# r-util-md1.r	Queueing Theory M/D/1 mean response time vs utilization
+# util-md1.r	Queueing Theory M/D/1 mean response time vs utilization
 #
-# USAGE: R --save < r-util-md1.r	# generates r-util-md1.pdf
+# USAGE: R --save < util-md1.r		# generates util-md1.pdf
 #
 # See the "Tunables" section for defining the mean service time.
 #
@@ -29,7 +29,7 @@
 
 # Tunables
 svc_ms <- 1				# average disk I/O service time
-pdf("r-util-md1.pdf", w=10, h=6)	# comment for interactive
+pdf("util-md1.pdf", w=10, h=6)		# comment for interactive
 util_min <- 0
 util_max <- 100
 ms_min <- 0
