@@ -12,10 +12,12 @@ pdf("frequencytrailtest.pdf", w=8, h=4)
 # plot a data frame as a frequency trail
 plotfrequencytrail <- function(data) {
 	n <- 2048				# resolution
-	thr <- 1 / (sd(data) * length(data))	# threshold
 	lwd <- 4				# line width
-	den <- density(data, n=n)
 
+	# threshold. todo: improve this calculation to be more robust.
+	thr <- 1 / (sd(data) * length(data))
+
+	den <- density(data, n=n)
 	plot(den, col=NA, fg=NA)
 
 	# replace low frequency with NA to avoid plotting
