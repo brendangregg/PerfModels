@@ -1,9 +1,9 @@
 # frequencytrail.r	Example frequency trail implementation.
 #
 # This implementation takes a density plot with a high resolution, and
-# plots lines that are above a minimum threshold.  This hides the zero
-# probability line, and provide a coarse (but probably sufficient) view
-# of distribution outliers.
+# removes lines that are below a minimum threshold, by setting their value
+# to NA.  This hides the zero probability line, and provide a coarse (but
+# probably sufficient) view of distribution outliers.
 #
 # 08-Jun-2013	Brendan Gregg	Created this.
 
