@@ -106,6 +106,10 @@ if (type == 0) {		# uniform narrow
 	          runif(N * 0.04, min=1000, max=2250))
 	data <- randomize(data)
 
+} else if (type == 104) {	# unimodal normal wide
+	outliers <- "N"
+	data <- rnorm(N, mean=1120, sd=700)
+
 } else if (type == 110) {	# unimodal band reject
 	outliers <- "N"
 	data0 <- rnorm(N, mean=1000, sd=200)

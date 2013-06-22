@@ -43,7 +43,7 @@ source("da-common.r")
 
 # input
 type <- 100		# distribution type: see da-libsynth.r and below
-N <- 10000		# target elements
+N <- 5000		# target elements
 trim <- 0		# trim data set: 0 none, 1 outliers, 2 maxlat
 maxtrim <- 0		# max value for use with trim 2
 random <- 1		# randomize data ordering
@@ -64,6 +64,7 @@ extra <- 0		# extra tests
 weight <- 0		# density weight
 statlines <- 0		# plot lines for mean, stddev
 symlink <- 0		# create encoded symlinks
+fill <- 0		# polygon fill
 
 # labels
 mtitle <- "Latency Distribution"
@@ -81,6 +82,7 @@ if ((env <- Sys.getenv("DENSITY")) != "") { density <- as.numeric(env) }
 if ((env <- Sys.getenv("LWD")) != "") { lwidth <- as.numeric(env) }
 if ((env <- Sys.getenv("TRANS")) != "") { trans <- as.numeric(env) }
 if ((env <- Sys.getenv("RUG")) != "") { rug <- as.numeric(env) }
+if ((env <- Sys.getenv("FILL")) != "") { fill<- as.numeric(env) }
 if ((env <- Sys.getenv("OUTFILE")) != "") { outfile <- env }
 if ((env <- Sys.getenv("INFILE")) != "") { infile <- env }
 if ((env <- Sys.getenv("RANDOM")) != "") { random <- as.numeric(env) }
@@ -110,6 +112,8 @@ if (trans) { par(bg = NA) }
 # type	description
 # 600	input from infile in dilt format
 # 601	input from infile in dilt10000 format
+# 602	input as a single column of microseconds
+# 602	input as a single column of counts
 data <- c()
 source("da-libsynth.r")		# defines types 0-499
 source("da-libreal.r")		# defines types 500-599
@@ -120,6 +124,7 @@ if (type == 600) {		# infile dilt format
 	    col.names=c("ENDTIMEus","LATENCYus","DIR","SIZEbytes","PROCESS"))
 	attach(input);
 	data <- input$LATENCYus
+	N <- length(data)
 	if (random) { data <- randomize(data) }
 
 } else if (type == 601) {	# infile dilt10000 format
@@ -129,7 +134,28 @@ if (type == 600) {		# infile dilt format
 	    "PROCESS"))
 	attach(input);
 	data <- input$LATENCYus
+	N <- length(data)
 	if (random) { data <- randomize(data) }
+
+} else if (type == 602) {	# microseconds
+	outliers <- "?"
+	input <- read.table(infile, header=FALSE, skip=1, nrows=N,
+	    col.names=c("LATENCYus"))
+	attach(input);
+	data <- input$LATENCYus
+	N <- length(data)
+	if (random) { data <- randomize(data) }
+
+} else if (type == 603) {	# counts
+	outliers <- "?"
+	input <- read.table(infile, header=FALSE, skip=1, nrows=N,
+	    col.names=c("LATENCYus"))
+	attach(input);
+	data <- input$LATENCYus
+	N <- length(data)
+	if (random) { data <- randomize(data) }
+	mtitle <- "Count Distribution"
+	xtitle <- "Counts"
 
 } else if (length(data) == 0) {
 	printf("ERROR: type %d unknown.\n", type)
@@ -188,6 +214,10 @@ if (density == 0) {
 if (density == 1) {
 	plot(den, main = mtitle, xlab = xtitle, ylab = ytitle,
 	    lwd = lwidth, fg = NA, xlim = xlim, ylim = ylim)
+	if (fill) {
+		polygon(c(min(den$x), den$x, max(den$x)),
+		    c(0, den$y, 0), col = "white")
+	}
 	if (rug) {
 		rug(data, lwd = lwidth, ticksize = 0.046, col="white",
 		    xlim = xlim)
@@ -204,6 +234,7 @@ if (density == 1) {
 	by <- den$y[1]
 	maxden <- max(den$y)
 	minden <- min(den$y)
+	maxx <- max(den$x)
 	threshold = maxden / pngheight
 
 	for (i in 1:512) { 
@@ -229,25 +260,17 @@ if (density == 1) {
 
 		} else {
 			if (state == 0) {
-				# todo: adjust n appropriately
-				sden <- density(data, adjust = denadj,
+				nn <- 1 + round(512 * (den$x[i] - bx) / maxx)
+				sden <- density(data, adjust = denadj, n = nn,
 				    from = bx, to = den$x[i], cut=0)
 				if (weight) { sden$y <- sden$y * sden$x }
+				if (fill) {
+					polygon(c(bx, sden$x, den$x[i]),
+					    c(0, sden$y, 0), col = "white")
+				}
 				lines(sden, main = " ", lwd = lwidth,
 				    fg = NA, col = "black",
 				    xlim=xlim, ylim=ylim)
-
-				# filling in a gap R sometimes leaves, which
-				# is only necessary for later transparency
-				# floodfill by ImageMagick; and that was only
-				# necessary as R's inbuilt transparency and
-				# polygons had rendering issues.
-				x <- c(bx, bx)
-				y <- c(0, by)
-				lines(x, y, lwd = lwidth, col = "black")
-				y <- c(0, den$y[i])
-				x <- c(den$x[i], den$x[i])
-				lines(x, y, lwd = lwidth, col = "black")
 
 				state <- 1
 				bx <- den$x[i]
@@ -308,7 +331,7 @@ madv <- madv / N
 by <- 0
 ydiff <- 0
 # use a smoother density line
-den <- density(data, adjust = 0.5)
+den <- density(data, adjust = 2 * denadj)
 if (weight) { den$y <- den$y * den$x }
 maxden <- max(den$y)
 for (i in 1:512) {
@@ -373,8 +396,8 @@ if (statlines) {
 	abline(v=mean + stddev, col="black", lty="dotted")
 	abline(v=mean - stddev, col="black", lty="dotted")
 	legend("topright",
-	    c("mean", "stddev"),
-	    lty=c("dashed", "dotted"),
+	    c("mean", "stddev", "99th pct"),
+	    lty=c("dashed", "dotted", "dotdash"),
 	    lwd=1)
 }
 
@@ -383,6 +406,7 @@ printf("\n%s written.\n", outfile)
 
 # create symlinks
 if (symlink) {
+print("making symlinks...")
 	if (trim == 0) {
 		# create ordered maxsigma pngs
 		filename2 <- sprintf("maxsigma_%03d.%06d_%d.png",
