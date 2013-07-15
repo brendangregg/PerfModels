@@ -1,4 +1,4 @@
-# distanalysis.r	Distribution Analysis
+# dist.r	Distribution Analysis
 #
 # This analyzes data set distributions, both synthetic and actual.  It is
 # especially intended for latency distributions, such as disk I/O latency,
@@ -8,7 +8,7 @@
 #
 # Environment variables can be set to control behavior and output: see the
 # environment section below.  These are set by parent shell scripts which
-# execute a series of distanalysis.r runs to generate composite images.
+# execute a series of dist.r runs to generate composite images.
 #
 # I doubt this is a good example of R scripting.  This includes considerable
 # extra complexity for the environment and process it is used in, which won't
@@ -44,14 +44,15 @@ source("da-common.r")
 # input
 type <- 100		# distribution type: see da-libsynth.r and below
 N <- 5000		# target elements
-trim <- 0		# trim data set: 0 none, 1 outliers, 2 maxlat
-maxtrim <- 0		# max value for use with trim 2
+trim <- 0		# trim data set: 0 none, 1 sd, 2 iqr, 3 maxtrim
+maxtrim <- 0		# max value for use with trim 3
 random <- 1		# randomize data ordering
 png <- 0		# png instead of pdf
+svg <- 0		# svg instead of pdf
 pngheight <- 400	# default png height
 pngwidth <- 600		# default png width
-pdfheight <- 4.5	# default pdf height
-pdfwidth <- 9	 	# default pdf width
+pdfheight <- 4.5	# default pdf/svg height
+pdfwidth <- 9	 	# default pdf/svg width
 density <- 0		# draw density plot instead of histogram
 denadj <- 0.4		# density adjust parameter
 labels <- 1		# draw chart labels (default on)
@@ -59,17 +60,23 @@ lwidth <- 8		# density line width
 trans <- 0		# transparent background
 rug <- 0		# do rug plot
 outfile <- "dists.pdf"	# output file
-infile <- "out.dilt"	# input file for dist types 600+
+infile <- ""		# input file for dist types 600+
 extra <- 0		# extra tests
 weight <- 0		# density weight
 statlines <- 0		# plot lines for mean, stddev
+plines <- 0		# plot lines for 90th, 99th, 99.9th percentiles
 symlink <- 0		# create encoded symlinks
 fill <- 0		# polygon fill
+numbered <- 0		# add value to right of plot
+num_mvalue <- 1		# that value is mvalue
+num_maxsigma <- 0	# that value is maxsigma
+num_max <- 0		# that value is max
+num_factor <- 1000000	# factor for max value
+centermean <- 0		# center mean in plot
 
 # labels
 mtitle <- "Latency Distribution"
 xtitle <- "Disk I/O latency (us)"
-ytitle <- "Frequency"
 
 # environment
 if ((env <- Sys.getenv("N")) != "") { N <- as.numeric(env) }
@@ -77,6 +84,7 @@ if ((env <- Sys.getenv("TYPE")) != "") { type <- as.numeric(env) }
 if ((env <- Sys.getenv("TRIM")) != "") { trim <- as.numeric(env) }
 if ((env <- Sys.getenv("MAXTRIM")) != "") { maxtrim <- as.numeric(env) }
 if ((env <- Sys.getenv("PNG")) != "") { png <- as.numeric(env) }
+if ((env <- Sys.getenv("SVG")) != "") { svg <- as.numeric(env) }
 if ((env <- Sys.getenv("LABELS")) != "") { labels <- as.numeric(env) }
 if ((env <- Sys.getenv("DENSITY")) != "") { density <- as.numeric(env) }
 if ((env <- Sys.getenv("LWD")) != "") { lwidth <- as.numeric(env) }
@@ -88,77 +96,64 @@ if ((env <- Sys.getenv("INFILE")) != "") { infile <- env }
 if ((env <- Sys.getenv("RANDOM")) != "") { random <- as.numeric(env) }
 if ((env <- Sys.getenv("EXTRA")) != "") { extra <- as.numeric(env) }
 if ((env <- Sys.getenv("SYMLINK")) != "") { symlink <- as.numeric(env) }
+if ((env <- Sys.getenv("STATLINES")) != "") { statlines <- as.numeric(env) }
 if ((env <- Sys.getenv("WEIGHT")) != "") { weight <- as.numeric(env) }
 if ((env <- Sys.getenv("PNGWIDTH")) != "") { pngwidth <- as.numeric(env) }
 if ((env <- Sys.getenv("PNGHEIGHT")) != "") { pngheight <- as.numeric(env) }
+if ((env <- Sys.getenv("PDFWIDTH")) != "") { pdfwidth <- as.numeric(env) }
+if ((env <- Sys.getenv("PDFHEIGHT")) != "") { pdfheight <- as.numeric(env) }
+
 if (png) {
 	if (outfile == "dists.pdf") { outfile <- "dists.png" }
 	if ((pngheight < 200) & labels) { pngheight <- pngheight + 140; }
 	png(outfile, pngwidth, pngheight)
+} else if (svg) {
+	if (outfile == "dists.pdf") { outfile <- "dists.svg" }
+	svg(outfile, width=pdfwidth, height=pdfheight)
 } else {
 	pdf(outfile, w=pdfwidth, h=pdfheight)
 }
 if (!labels) {
 	mtitle <- ' '; xtitle <- ' '; ytitle <- ' '
-	par(mai = c(0,0,0,0)); par(bty = "n")
+	par(bty = "n")
+	if (numbered) {
+		par(mai = c(0,0,0,1.5))
+	} else {
+		par(mai = c(0,0,0,0))
+	}
 } else {
 	par(mgp = c(2,0.5,0))
-	par(mar = c(4,3.5,3,2))
+	#par(cex = 2)
+	if (numbered) {
+		par(mar = c(4,3.5,3,3))
+	} else {
+		par(mar = c(4,3.5,3,2))
+	}
 }
 if (trans) { par(bg = NA) }
+if (density == 0) { ytitle <- "Frequency" } else { ytitle <- "Density" }
 
 # distributions
-#
-# type	description
-# 600	input from infile in dilt format
-# 601	input from infile in dilt10000 format
-# 602	input as a single column of microseconds
-# 602	input as a single column of counts
 data <- c()
 source("da-libsynth.r")		# defines types 0-499
 source("da-libreal.r")		# defines types 500-599
 
-if (type == 600) {		# infile dilt format
+if (type == 600) {		# data is column 0 from infile
 	outliers <- "?"
-	input <- read.table(infile, header=FALSE, skip=1, nrows=N,
-	    col.names=c("ENDTIMEus","LATENCYus","DIR","SIZEbytes","PROCESS"))
-	attach(input);
-	data <- input$LATENCYus
+	input <- read.table(infile, header=FALSE, skip=1, nrows=N)
+	data <- input$V1
 	N <- length(data)
 	if (random) { data <- randomize(data) }
 
-} else if (type == 601) {	# infile dilt10000 format
+} else if (type == 601) {	# data is column 1 from infile
 	outliers <- "?"
-	input <- read.table(infile, header=FALSE, skip=1, nrows=N,
-	    col.names=c("ENDTIMEus","LATENCYus","DIR","SIZEbytes","ZONENAME",
-	    "PROCESS"))
-	attach(input);
-	data <- input$LATENCYus
+	input <- read.table(infile, header=FALSE, skip=1, nrows=N)
+	data <- input$V2
 	N <- length(data)
 	if (random) { data <- randomize(data) }
-
-} else if (type == 602) {	# microseconds
-	outliers <- "?"
-	input <- read.table(infile, header=FALSE, skip=1, nrows=N,
-	    col.names=c("LATENCYus"))
-	attach(input);
-	data <- input$LATENCYus
-	N <- length(data)
-	if (random) { data <- randomize(data) }
-
-} else if (type == 603) {	# counts
-	outliers <- "?"
-	input <- read.table(infile, header=FALSE, skip=1, nrows=N,
-	    col.names=c("LATENCYus"))
-	attach(input);
-	data <- input$LATENCYus
-	N <- length(data)
-	if (random) { data <- randomize(data) }
-	mtitle <- "Count Distribution"
-	xtitle <- "Counts"
 
 } else if (length(data) == 0) {
-	printf("ERROR: type %d unknown.\n", type)
+	printf("ERROR: distribution type %d unknown.\n", type)
 	quit(save = "no")
 }
 
@@ -172,22 +167,33 @@ stddev <- sd(data)
 mad <- mad(data)
 iqr <- IQR(data)
 median <- median(data)
+max <- max(data)
+maxsigma <- (max - mean) / stddev
 
 # outlier trimming
 if (trim == 1) {
+	# +- 2 stddev
+	data <- data[data <= mean + 2 * stddev]
+	data <- data[data >= mean - 2 * stddev]
+	N <- length(data)
+} else if (trim == 2) {
 	# like boxplots, keep range IQR +- 1.5 x IQR
 	data <- data[data <= quantile(data, 0.75) + 1.5 * iqr]
 	data <- data[data >= quantile(data, 0.25) - 1.5 * iqr]
 	N <- length(data)
-} else if (trim == 2) {
+} else if (trim == 3) {
 	data <- data[data <= maxtrim]
 	N <- length(data)
 }
 
+# post trimmed
+mean <- mean(data)
+stddev <- sd(data)
+
 # plot histogram
 if (density == 0) {
-	hist(data,
-	    breaks = 50,
+	hist <- hist(data,
+	    breaks = 100,
 	    col = "gray90", 
 	    main = mtitle,
 	    xlab = xtitle,
@@ -195,31 +201,103 @@ if (density == 0) {
 	if (rug) {
 		rug(data, lwd=lwidth, col="black", ticksize=0.032)
 	}
+	maxden <- max(hist$counts)
 } else {
 	# prepare density plots
 	den <- density(data, adjust = denadj)
 	if (weight) { den$y <- den$y * den$x }
-	if (trim == 2) {
+	maxden <- max(den$y)
+	if (trim == 3) {
 		xlim <- c(0, maxtrim)
 	} else {
-		xlim <- c(min(den$x), max(den$x))
+		if (centermean) {
+			xlim <- c(mean - (max - mean), max)
+			xlim <- c(mean - 3.5 * stddev, mean + 3.5 * stddev) 
+		} else {
+			xlim <- c(min(den$x), max(den$x))
+		}
 	}
 
 	# ylim is scaled by 1.05 so top can be cropped.
 	# the lwd=8 plot can exceed 1.05 for sharp points
-	ylim <- c(0, 1.05 * max(den$y))
+	ylim <- c(0, 1.05 * maxden)
 }
 
 # density plot
 if (density == 1) {
+	set.seed(mean + median + stddev)
+	col <- "white"
+	trans <- 240
+
+	# customize color here
+
+	# pink/magenta ++ / green/aqua	<-- node.js cost
+	#col <- rgb(
+	#    0,
+	#    80 + sample(seq(1:100), 1),
+	#    60 + sample(seq(1:65), 1),
+	#    trans, maxColorValue = 255)
+
+	# purple/violet ++ / green/brown  <-- mysql cost
+	#col <- rgb(
+	#    70 + sample(seq(1:65), 1),
+	#    90 + sample(seq(1:100), 1),
+	#    0,
+	#    trans, maxColorValue = 255)
+
+	# orange ++ / blue/turquoise	<-- disk cost
+	#col <- rgb(
+	#    0,
+	#    80 + sample(seq(1:150), 1),
+	#    255,
+	#    trans, maxColorValue = 255)
+
+	# dark blue / yellow ++
+	#v1 <- 220 + sample(seq(1:35), 1)
+	#v2 <- v1 - 100 - sample(seq(1:115), 1)
+	#col <- rgb(v1, v1, v2, maxColorValue = 255)
+
+	# dark yellow ++ / light blue  <-- synth yellow
+	#v1 <- 255 - sample(seq(1:50), 1)
+	#v2 <- sample(seq(1:65), 1)
+	#col <- rgb(v2 + 5, v2 + 30, v1, trans, maxColorValue = 255)
+
+	# magenta / light green
+	#v1 <- 230 + sample(seq(1:25), 1)
+	#v2 <- v1 - 60 - sample(seq(1:110), 1)
+	#col <- rgb(v2, v1, v2, maxColorValue = 255)
+
+	# green trans ++ / magenta   <-- node.js
+	#v1 <- 220 + sample(seq(1:35), 1)
+	#v2 <- v1 - 90 - sample(seq(1:60), 1)
+	#col <- rgb(v1, v2, v1, trans, maxColorValue = 255)
+
+	# red trans ++ / aqua   <-- disk
+	#v1 <- 230 + sample(seq(1:25), 1)
+	#v2 <- sample(seq(1:125), 1)
+	#col <- rgb(v2, v1, v1, trans, maxColorValue = 255)
+
+	# blue trans ++ / yellow   <-- mysql
+	v1 <- 180 + sample(seq(1:55), 1)
+	v2 <- v1 - 100 - sample(seq(1:80), 1)
+	col <- rgb(v1, v1 - 20, v2, trans, maxColorValue = 255)
+
+	# turquoise / pink
+	#v1 <- 230 + sample(seq(1:25), 1)
+	#v2 <- v1 - 60 - sample(seq(1:90), 1)
+	#col <- rgb(v1, v2, v2, maxColorValue = 255)
+
 	plot(den, main = mtitle, xlab = xtitle, ylab = ytitle,
 	    lwd = lwidth, fg = NA, xlim = xlim, ylim = ylim)
 	if (fill) {
 		polygon(c(min(den$x), den$x, max(den$x)),
-		    c(0, den$y, 0), col = "white")
+		    c(0, den$y, 0), col = col)
+		plot(den, main = mtitle, xlab = xtitle, ylab = ytitle,
+		    lwd = lwidth, fg = NA, xlim = xlim, ylim = ylim,
+		    col = "white")
 	}
 	if (rug) {
-		rug(data, lwd = lwidth, ticksize = 0.046, col="white",
+		rug(data, lwd = lwidth, ticksize = 0.046, col = col,
 		    xlim = xlim)
 	}
 
@@ -232,25 +310,24 @@ if (density == 1) {
 	state <- 0	# 0 line, 1 rug
 	bx <- den$x[1]
 	by <- den$y[1]
-	maxden <- max(den$y)
 	minden <- min(den$y)
 	maxx <- max(den$x)
-	threshold = maxden / pngheight
+	threshold = 3 * maxden / pngheight
 
 	for (i in 1:512) { 
 		if (i == 512) {
 			# force plot on final point
 			if (state == 0) { den$y[i] = 0 }
-			if (state == 1) { den$y[i] = 1.1 * threshold / maxden }
+			if (state == 1) { den$y[i] = 1.1 * threshold }
 		}
 
-		if (den$y[i] / maxden > 3 * threshold / maxden) {
+		if (den$y[i] > threshold) {
 			if (state == 1) {
 				if (rug) {
 					rdata <- data[data >= bx]
 					rdata <- rdata[data < den$x[i]]
 					rug(rdata, lwd=lwidth,
-					    ticksize <- 0.046,
+					    ticksize <- 0.049,
 					    col="black", xlim=xlim)
 				}
 				state <- 0
@@ -281,8 +358,6 @@ if (density == 1) {
 }
 
 # calculate statistics
-mean <- mean(data)
-stddev <- sd(data)
 min <- min(data)
 max <- max(data)
 mad <- mad(data)
@@ -327,17 +402,22 @@ macdf <- macdf / (N - 1)
 sacdf <- sqrt(sacdf / (N - 1))
 madv <- madv / N
 
-# calculate ydiff
-by <- 0
-ydiff <- 0
-# use a smoother density line
-den <- density(data, adjust = 2 * denadj)
-if (weight) { den$y <- den$y * den$x }
-maxden <- max(den$y)
-for (i in 1:512) {
-	ydiff <- ydiff + abs(den$y[i] / maxden - by)
-	by <- den$y[i] / maxden
+# calculate mvalue
+maxmvalue <- 0
+for (a in c(2, 3, 5, 7, 10, 15, 20, 30)) {
+	# try various bandwidths, starting at 2x, and keep highest mvalue
+	by <- 0
+	mvalue <- 0
+	den <- density(data, adjust =  denadj * a)
+	if (weight) { den$y <- den$y * den$x }
+	maxd <- max(den$y)
+	for (i in 1:length(den$x)) {
+		mvalue <- mvalue + abs(den$y[i] / maxd - by)
+		by <- den$y[i] / maxd
+	}
+	if (mvalue > maxmvalue) { maxmvalue <- mvalue }
 }
+mvalue <- maxmvalue
 
 # print statistics
 printf("\n%-42s %d\n", "N", N)
@@ -372,7 +452,7 @@ printf("%-42s %.2f\n", "kurtosis", kurtosis)
 printf("%-42s %.2f\n", "bimodality coefficient", bimodalc)
 printf("%-42s %.2f\n", "bimodality coefficient finite sample", bimodalcf)
 printf("%-42s %.3f\n", "dip test statistic", diptest)
-printf("%-42s %.3f\n", "y difference", ydiff)
+printf("%-42s %.3f\n", "mvalue (y difference)", mvalue)
 printf("%-42s %.2f\n", "macdf/mean", macdf / mean)
 printf("%-42s %.2f\n", "sacdf/mean", sacdf / mean)
 printf("%-42s %.2f\n", "madv/stddev", madv / stddev)
@@ -390,15 +470,82 @@ if (extra) {
 	print(dip(data, full = "all"))
 }
 
+if (numbered) {
+	#
+	# Some awful code.  Ideally we'd create a text variable with whatever
+	# we want printed, then mtext() would place it right-aligned at a
+	# _reasonable_ spacing to the plot.  I've never got that to work.
+	# Instead, I let mtext() place it left-aligned, and achieve right-
+	# alignment by padding the text variable with spaces.  Two spaces
+	# for each digit, since it is variable width.
+	#
+
+	if (num_maxsigma) {
+		num <- maxsigma
+		# 2 dec places, up to 99; %5.2f has crooked alignment
+		if (num < 10) { text <- sprintf("  %.2f", num) }
+		else { text <- sprintf("%.2f", num) }
+	}
+
+	if (num_mvalue) {
+		num <- mvalue
+		# 2 dec places, up to 99; %5.2f has crooked alignment
+		if (num < 10) { text <- sprintf("  %.2f", num) }
+		else { text <- sprintf("%.2f", num) }
+	}
+
+	if (num_max) {
+		num <- max / num_factor
+		text <- ""; x <- round(num)
+		if (x == 0) { x <- 1 }
+		while (x < 1000) {
+			text <- paste(text, "  ", sep = "")
+			x <- x * 10
+		}
+		text <- paste(text, sprintf("%d", round(num)), sep = "")
+	}
+	if (num_max) {
+		num <- max / num_factor
+		text <- ""; x <- round(num)
+		if (x == 0) { x <- 1 }
+		while (x < 1000) {
+			text <- paste(text, "  ", sep = "")
+			x <- x * 10
+		}
+		text <- paste(text, sprintf("%d", round(num)), sep = "")
+	}
+
+	# padj = 2 for pngheight 120; 3.85 for pngheight 220; 1.5 centered
+	# col = white for filled; black for trail;
+	mtext(text, side = 4, las = 1, cex = 3, adj = 0.5, padj = 3.85,
+	    col = "white")
+}
+
 # plot statistics
 if (statlines) {
 	abline(v=mean, col="black", lwd=1, lty="dashed")
 	abline(v=mean + stddev, col="black", lty="dotted")
 	abline(v=mean - stddev, col="black", lty="dotted")
+	abline(v=percentiles[2], col="black", lty="1A")
+	abline(v=mean + 6 * stddev, col="black", lty="4A")
 	legend("topright",
-	    c("mean", "stddev", "99th pct"),
-	    lty=c("dashed", "dotted", "dotdash"),
+	    c("mean", "stddev", "99th pct", expression(6 * sigma)),
+	    lty=c("dashed", "dotted", "1A", "4A"),
 	    lwd=1)
+}
+
+if (centermean) {
+	lines(x = c(mean, mean), y = c(0, maxden),
+	    col = "white", lwd = 8, lend = 1)
+}
+
+if (plines) {
+	lines(x = c(percentiles[1], percentiles[1]), y = c(0, maxden / 4),
+	    col = "white", lwd = 4)
+	lines(x = c(percentiles[2], percentiles[2]), y = c(0, maxden / 4),
+	    col = "white", lwd = 4)
+	lines(x = c(percentiles[3], percentiles[3]), y = c(0, maxden / 4),
+	    col = "white", lwd = 4)
 }
 
 dev.off()
@@ -406,28 +553,35 @@ printf("\n%s written.\n", outfile)
 
 # create symlinks
 if (symlink) {
-print("making symlinks...")
-	if (trim == 0) {
-		# create ordered maxsigma pngs
-		filename2 <- sprintf("maxsigma_%03d.%06d_%d.png",
-		    floor(maxsigma), round(1000000 * (maxsigma %% 1)), type)
-		system(sprintf("ln -s %s %s", outfile, filename2))
-	} else if (trim == 1) {
-		# create ordered bimodalcf pngs
-		filename2 <- sprintf("bimodalcf_%03d.%06d_%d.png",
-		    floor(bimodalcf), round(1000000 * (bimodalcf %% 1)), type)
-		system(sprintf("ln -s %s %s", outfile, filename2))
-		# create ordered diptest pngs
-		filename2 <- sprintf("diptest_%03d.%06d_%d.png",
-		    floor(diptest), round(1000000 * (diptest %% 1)), type)
-		system(sprintf("ln -s %s %s", outfile, filename2))
-	}
-	# create ordered pngs
-	filename2 <- sprintf("order_%03d.%06d_%d_%s.png",
-	    floor(cov), round(1000000 * (cov %% 1)), type, trim)
-	system(sprintf("ln -s %s %s", outfile, filename2))
-	# create ydiff pngs
-	filename2 <- sprintf("ydiff_%03d.%06d_%d_%s.png",
-	    floor(ydiff), round(1000000 * (ydiff %% 1)), type, trim)
-	system(sprintf("ln -s %s %s", outfile, filename2))
+	print("making symlinks...")
+	inf <- basename(infile)
+
+	# create ordered max pngs
+	link <- sprintf("max_%016d_%s%d.png", round(max), inf, type)
+	system(sprintf("ln -s %s %s", outfile, link))
+
+	# create ordered maxsigma pngs
+	link <- sprintf("maxsigma_%03d.%06d_%s%d.png",
+	    floor(maxsigma), round(1000000 * (maxsigma %% 1)), inf, type)
+	system(sprintf("ln -s %s %s", outfile, link))
+
+	# create ordered bimodalcf pngs
+	link <- sprintf("bimodalcf_%03d.%06d_%s%d.png",
+	    floor(bimodalcf), round(1000000 * (bimodalcf %% 1)), inf, type)
+	system(sprintf("ln -s %s %s", outfile, link))
+
+	# create ordered diptest pngs
+	link <- sprintf("diptest_%03d.%06d_%s%d.png",
+	    floor(diptest), round(1000000 * (diptest %% 1)), inf, type)
+	system(sprintf("ln -s %s %s", outfile, link))
+
+	# create ordered cov pngs
+	link <- sprintf("cov_%03d.%06d_%s%d%s.png",
+	    floor(cov), round(1000000 * (cov %% 1)), inf, type, trim)
+	system(sprintf("ln -s %s %s", outfile, link))
+
+	# create ordered mvalue pngs
+	link <- sprintf("ydiff_%03d.%06d_%s%d%s.png",
+	    floor(mvalue), round(1000000 * (mvalue %% 1)), inf, type, trim)
+	system(sprintf("ln -s %s %s", outfile, link))
 }

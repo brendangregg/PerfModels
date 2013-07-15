@@ -1,4 +1,4 @@
-# da-common.r		Common functions for distanalysis.r.
+# da-common.r		Common functions for dist.r.
 #
 # 01-Jun-2013	Brendan Gregg	Created this.
 

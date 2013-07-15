@@ -1,6 +1,6 @@
 # da-libreal		Some Real Latency Distributions
 #
-# This is a library for distanalysis.r.  It requires the data files listed
+# This is a library for dist.r.  It requires the data files listed
 # below (see read.table).
 #
 # Input:

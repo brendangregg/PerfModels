@@ -1,6 +1,6 @@
 # da-libsynth.r		Synthetic Latency Distributions
 #
-# This is a library for distanalysis.r.
+# This is a library for dist.r.
 #
 # This defines various synthetic distributions for modeling I/O latency.
 # The distributions are composed of values that are typically between 0 and
@@ -60,6 +60,9 @@ library(VGAM)		# rpareto
 # 211	bimodal normal minor major
 # 212	bimodal normal major minor outliers
 # 213	bimodal normal minor major outliers
+# 214	bimodal far normal far outliers 1% (blog)
+# 215	bimodal very far normal far outliers 1% (blog)
+# 216	bimodal very far major minor outliers 1% (blog)
 # 300	trimodal normal close
 # 301	trimodal normal medium
 # 302	trimodal normal far
@@ -72,6 +75,7 @@ library(VGAM)		# rpareto
 # 401	quadmodal normal medium
 # 402	quadmodal normal far
 # 403	quadmodal normal outliers
+# 1000+	unimodal normal outliers random
 
 # definitions
 set.seed(type)
@@ -335,6 +339,27 @@ if (type == 0) {		# uniform narrow
 	N <- length(data)
 	data <- randomize(data)
 
+} else if (type == 214) {	# bimodal far normal far outliers 1%
+	outliers <- "Y"
+	data <- c(rnorm(N * 0.499, mean=500, sd=150),
+	          rnorm(N * 0.499, mean=2000, sd=300),
+	          runif(N * 0.002, min=1000, max=180000))
+	data <- randomize(data)
+
+} else if (type == 215) {	# bimodal far normal far outliers 1%
+	outliers <- "Y"
+	data <- c(rnorm(N * 0.499, mean=500, sd=100),
+	          rnorm(N * 0.499, mean=4000, sd=500),
+	          runif(N * 0.002, min=1000, max=180000))
+	data <- randomize(data)
+
+} else if (type == 216) {	# bimodal far normal far outliers 1%
+	outliers <- "Y"
+	data <- c(rnorm(N * 0.667, mean=500, sd=100),
+	          rnorm(N * 0.333, mean=4000, sd=100),
+	          runif(N * 0.002, min=1000, max=180000))
+	data <- randomize(data)
+
 } else if (type == 300) {	# trimodal normal close
 	outliers <- "N"
 	data <- c(rnorm(N * 0.333, mean=750, sd=90),
@@ -424,5 +449,17 @@ if (type == 0) {		# uniform narrow
 	          rnorm(N * 0.25, mean=1100, sd=50),
 	          rnorm(N * 0.24, mean=1300, sd=50),
 	          runif(N * 0.01, min=1000, max=5000))
+	data <- randomize(data)
+
+} else if (type >= 1000) {	# relative to type num
+	set.seed(type)
+	outliers <- "?"
+	d_mean <- runif(1, 1000, 5000)
+	d_sd <- runif(1, 10, 2000)
+	o_ratio <- sample(1:10)[1]
+	o_max <- d_mean + runif(1, 0, d_sd * 5) + runif(1, 0, 10)^5
+	data <- c(rnorm(N * (1 - o_ratio/1000), mean=d_mean, sd=d_sd),
+	          runif(N * o_ratio/1000, min=d_mean, max=o_max))
+	N <- length(data)
 	data <- randomize(data)
 }
